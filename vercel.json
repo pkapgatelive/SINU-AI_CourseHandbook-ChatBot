@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
+  ],
+  "env": {
+    "N8N_WEBHOOK_URL": "@n8n_webhook_url",
+    "RATE_LIMIT_WINDOW": "@rate_limit_window",
+    "RATE_LIMIT_MAX_REQUESTS": "@rate_limit_max_requests"
+  }
+}

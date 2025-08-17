@@ -1,0 +1,416 @@
+{
+  "name": "Production-chat-SINU-Coursebook-bot",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "question-field",
+              "name": "question",
+              "value": "={{ $json.chatInput }}",
+              "type": "string"
+            },
+            {
+              "id": "thread-id-field",
+              "name": "threadId",
+              "value": "={{ $json.chatId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-node-id",
+      "name": "Set Question and Thread ID",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        200,
+        112
+      ],
+      "typeVersion": 3.4
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.chatInput && $json.chatInput.length > 0 }}",
+              "operation": "equal",
+              "value2": "={{ true }}"
+            }
+          ]
+        }
+      },
+      "id": "if-guard-id",
+      "name": "IF - Check chatInput",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        350,
+        112
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "response": {
+          "response": {
+            "contentType": "text/plain",
+            "response": "Please type a message."
+          }
+        }
+      },
+      "id": "respond-node-id",
+      "name": "Respond to Chat",
+      "type": "@n8n/n8n-nodes-langchain.respondToChat",
+      "position": [
+        500,
+        250
+      ],
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.question }}",
+        "options": {
+          "systemMessage": "You are an intelligent assistant specialized in answering user questions \nusing SINU's CourseBook Information Portal. Your primary goal is to provide precise, \ncontextually relevant, and concise answers based on the tools and resources available.  \n\nYou must always retrieve relevant documents from the Qdrant Vector Store tool \n(collection name: SINU's-CourseBook) before answering. \nDo not rely on your own knowledge unless Qdrant returns nothing."
+        }
+      },
+      "id": "ca7386bb-01e8-4dea-a98d-67ee285d9701",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [
+        608,
+        112
+      ],
+      "typeVersion": 1.7,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 40
+      },
+      "id": "74d94ff3-6304-44b1-aadb-ad5c6beb7431",
+      "name": "Window Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "position": [
+        624,
+        320
+      ],
+      "typeVersion": 1.3
+    },
+    {
+      "parameters": {
+        "public": true,
+        "mode": "webhook",
+        "options": {}
+      },
+      "id": "a6aa47d5-a702-48a8-af4c-023b5561192b",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "position": [
+        48,
+        112
+      ],
+      "webhookId": "5f1c0c82-0ff9-40c7-9e2e-b1a96ffe24cd",
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.0-flash",
+        "options": {
+          "maxOutputTokens": 8192
+        }
+      },
+      "id": "c7272867-ba97-4db9-bb6c-f46bca85f5d7",
+      "name": "Google Gemini Chat Model1",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "position": [
+        496,
+        272
+      ],
+      "typeVersion": 1,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "H3AcNmhOyhj0vfmE",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-large",
+        "options": {}
+      },
+      "id": "db4bc8d2-d990-427e-9cd7-c79e5f6c04e4",
+      "name": "text-embeddings-3-large1",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "position": [
+        880,
+        480
+      ],
+      "typeVersion": 1,
+      "credentials": {
+        "openAiApi": {
+          "id": "6cVLXYrJ9q7InWba",
+          "name": "OpenAi account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## 🤖Retrieve Content from Qdrant Vector Store",
+        "height": 680,
+        "width": 860,
+        "color": 5
+      },
+      "id": "3a939b1a-db2d-4d0d-9edb-657d97d6a7f7",
+      "name": "Sticky Note9",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        304,
+        16
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## 🗣️ Chat with Your Documents",
+        "height": 320,
+        "width": 340,
+        "color": 4
+      },
+      "id": "69347be6-65fa-445e-af0c-99e2dd792cc0",
+      "name": "Sticky Note10",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -80,
+        16
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## SINU's Course Handbook Chatbot",
+        "height": 880,
+        "width": 1780,
+        "color": 7
+      },
+      "id": "f872541c-5253-4cd2-b706-eb97cb32fc7f",
+      "name": "Sticky Note12",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -160,
+        -112
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "response": {
+          "response": {
+            "contentType": "text/plain",
+            "response": "={{ $json.output }}"
+          }
+        }
+      },
+      "id": "748115fb-d62e-4248-a6fd-db8120a9d468",
+      "name": "Respond to Chat",
+      "type": "@n8n/n8n-nodes-langchain.respondToChat",
+      "position": [
+        1328,
+        352
+      ],
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "content": "## Save Chat History",
+        "height": 300,
+        "width": 340,
+        "color": 4
+      },
+      "id": "c3847b28-b645-414e-8282-2058c2a565ad",
+      "name": "Sticky Note13",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1200,
+        16
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentURL": "https://docs.google.com/document/d/1DJbEUS2YDh1XBdpY4FuYdkQwBICuZlshgvpn0tjgwzE/edit?tab=t.0",
+        "actionsUi": {
+          "actionFields": [
+            {
+              "action": "insert",
+              "text": "=User: {{ $('When chat message received').item.json.chatInput }} --> Assistant: {{ $('AI Agent').item.json.output }}\n----------------------------------------------------------------------------------------"
+            }
+          ]
+        }
+      },
+      "id": "33a7516a-bf00-4c21-930a-1fa500bda70d",
+      "name": "Update Chat History",
+      "type": "n8n-nodes-base.googleDocs",
+      "position": [
+        1328,
+        112
+      ],
+      "typeVersion": 2,
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "yJCHAPjPT9WJ1p1P",
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "qdrant_course_search",
+        "toolDescription": "Retrieves course details and diploma programs from the vector database (SINU's-CourseBook).",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "SINU's-CourseBook",
+          "mode": "list",
+          "cachedResultName": "SINU's-CourseBook"
+        },
+        "topK": 20,
+        "options": {}
+      },
+      "id": "b32154f2-e32e-4cfc-b25c-37702fd55ae0",
+      "name": "Qdrant Course Search",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "position": [
+        784,
+        320
+      ],
+      "typeVersion": 1,
+      "credentials": {
+        "qdrantApi": {
+          "id": "7qsDSGxPf4qgPcGz",
+          "name": "QdrantApi account"
+        }
+      },
+      "continueOnFail": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Set Question and Thread ID": {
+      "main": [
+        [
+          {
+            "node": "IF - Check chatInput",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Check chatInput": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Respond to User",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update Chat History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Set Question and Thread ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "text-embeddings-3-large1": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Qdrant Course Search",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant Course Search": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "282d7b77-73f1-4781-b3dc-81b875509b9e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "604bd676b1930661e48c8a76ff00f2c2f2dda79f7a25391142e61a8fa017ac76"
+  },
+  "id": "pVuj0sXJu4BOPzzU",
+  "tags": []
+}
