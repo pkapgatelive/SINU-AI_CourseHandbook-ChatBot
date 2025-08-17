@@ -19,9 +19,16 @@ export default function Home() {
       <ChatLauncher onClick={handleOpenModal} onFocus={handleOpenModal} />
       <ChatModal isOpen={isModalOpen} onClose={handleCloseModal} initialFocusRef={inputRef} />
       <div className="container mx-auto px-4 py-24 sm:py-32">
+        <br />
+        <br />
+        <br />
         <div className="text-center">
           <h1 className="text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600 mb-6 tracking-tight">Welcome to SINU Course Information Portal</h1>
           <p className="text-xl text-slate-600 mb-8">Your AI-powered guide to Solomon Islands National University programs and courses</p>
+          <br />
+          <br />
+          <br />
+          <br />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
             <div className="bg-white/80 backdrop-blur-sm p-8 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300 border border-white/20">
               <div className="text-blue-600 mb-6"><svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg></div>

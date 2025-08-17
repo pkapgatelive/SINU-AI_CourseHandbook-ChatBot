@@ -82,7 +82,7 @@ export default function RootLayout({
           <footer className="bg-background border-t border-secondary py-6">
             <div className="container">
               <div className="text-center text-sm text-foreground/60">
-                <p>© {new Date().getFullYear()} Next.js Chat App. All rights reserved.</p>
+                <p>© {new Date().getFullYear()} SINU Course Handbook Chat App. All rights reserved.</p>
                 <p className="mt-2">
                   <a
                     href="/privacy"
