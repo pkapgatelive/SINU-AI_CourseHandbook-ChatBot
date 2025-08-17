@@ -37,14 +37,14 @@ export default function Toast({
   const getTypeStyles = () => {
     switch (type) {
       case 'success':
-        return 'bg-green-500 text-white';
+        return 'bg-emerald-600 text-white';
       case 'error':
-        return 'bg-red-500 text-white';
+        return 'bg-rose-600 text-white';
       case 'warning':
-        return 'bg-yellow-500 text-black';
+        return 'bg-amber-500 text-slate-900';
       case 'info':
       default:
-        return 'bg-blue-500 text-white';
+        return 'bg-sky-600 text-white';
     }
   };
 
@@ -53,7 +53,7 @@ export default function Toast({
   return (
     <div 
       className={`
-        fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transform transition-all duration-300 ease-in-out
+        fixed top-4 right-4 z-[200] px-4 py-3 rounded-xl shadow-lg transform transition-all duration-300 ease-in-out
         ${getTypeStyles()}
         ${isVisible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
       `}

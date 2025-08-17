@@ -1,24 +1,39 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useMutation } from '@tanstack/react-query';
+
+const throttle = (func: Function, limit: number) => {
+  let inThrottle: boolean;
+  return function (...args: any[]) {
+    if (!inThrottle) {
+      func.apply(null, args);
+      inThrottle = true;
+      setTimeout(() => (inThrottle = false), limit);
+    }
+  };
+};
 import { getSessionId, resetSession } from '@/lib/session';
 import { useToast } from '@/components/ToastProvider';
 import MarkdownRenderer from '@/components/MarkdownRenderer';
 
-export default function ChatBox() {
+interface ChatBoxProps {
+  inputRef?: React.RefObject<HTMLTextAreaElement | null>;
+}
+
+export default function ChatBox({ inputRef }: ChatBoxProps) {
   const [messages, setMessages] = useState<{id: number, text: string, sender: 'user' | 'bot'}[]>([
     { id: 1, text: "Hello! I'm SINU's AI assistant. How can I help you today? You can ask me about diploma programs, entry requirements, or any other questions about SINU.", sender: 'bot' }
   ]);
   const [inputValue, setInputValue] = useState('');
   const [sessionId, setSessionId] = useState<string>('');
   const [isBotTyping, setIsBotTyping] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
+
   const { addToast } = useToast();
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
   const chatContainerRef = useRef<null | HTMLDivElement>(null);
-  const textareaRef = useRef<null | HTMLTextAreaElement>(null);
+  const localTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const textareaRef = inputRef || localTextareaRef;
   const messageIdCounter = useRef<number>(2);
 
   useEffect(() => {
@@ -26,11 +41,33 @@ export default function ChatBox() {
     setSessionId(sessionId);
   }, []);
 
+  const [isPinned, setIsPinned] = useState(true);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+
   const scrollToBottom = () => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    if (messagesEndRef.current && isPinned) {
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      });
     }
   };
+
+  const handleScroll = () => {
+    if (!chatContainerRef.current) return;
+    const { scrollHeight, scrollTop, clientHeight } = chatContainerRef.current;
+    const atBottom = scrollHeight - (scrollTop + clientHeight) <= 40;
+    setIsPinned(atBottom);
+    setShowJumpToBottom(!atBottom);
+  };
+
+  useEffect(() => {
+    const chatContainer = chatContainerRef.current;
+    if (chatContainer) {
+      const throttledScroll = throttle(handleScroll, 60);
+      chatContainer.addEventListener('scroll', throttledScroll);
+      return () => chatContainer.removeEventListener('scroll', throttledScroll);
+    }
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -143,9 +180,7 @@ export default function ChatBox() {
       return;
     }
 
-    if (!isExpanded) {
-      setIsExpanded(true);
-    }
+
 
     const newUserMessage = {
       id: messageIdCounter.current++,
@@ -177,23 +212,19 @@ export default function ChatBox() {
   };
 
   return (
-    <motion.div 
-      className="w-full max-w-xl mx-auto bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl overflow-hidden border border-gray-200"
-      initial={{ height: 'auto' }}
-      animate={{ height: isExpanded ? 'auto' : 'min-content' }}
-      transition={{ duration: 0.3, ease: 'easeInOut' }}
-    >
+    <div className="flex flex-col h-full">
+
       {/* Chat Header */}
-      <div className="flex justify-between items-center p-4 border-b border-gray-200">
+      <div className="flex justify-between items-center p-4 sm:p-6 border-b border-slate-200">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center">
+          <div className="w-10 h-10 bg-gradient-to-r from-sky-600 to-indigo-600 rounded-full flex items-center justify-center">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-gray-800">SINU AI Assistant</h1>
-            <p className="text-sm text-gray-500">Online • Ready to help</p>
+            <h1 id="chat-modal-title" className="text-lg font-semibold bg-gradient-to-r from-sky-600 to-indigo-600 bg-clip-text text-transparent">SINU AI Assistant</h1>
+            <p className="text-sm text-slate-500">Online • Ready to help</p>
           </div>
         </div>
         <button
@@ -205,7 +236,7 @@ export default function ChatBox() {
               { id: 1, text: "Hello! I'm SINU's AI assistant. How can I help you today? You can ask me about diploma programs, entry requirements, or any other questions about SINU.", sender: 'bot' }
             ]);
           }}
-          className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-full text-sm font-medium hover:shadow-lg transition-all duration-200"
+          className="px-4 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 text-white rounded-full text-sm font-medium hover:shadow-lg transition-all duration-200"
           aria-label="Reset chat"
         >
           Reset
@@ -213,18 +244,11 @@ export default function ChatBox() {
       </div>
 
       {/* Chat Messages */}
-      <AnimatePresence>
-        {isExpanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="overflow-hidden"
-          >
+
+
             <div 
               ref={chatContainerRef}
-              className="h-[400px] overflow-y-auto p-4 bg-gradient-to-br from-blue-50/30 via-indigo-50/30 to-purple-50/30"
+              className="h-[70vh] md:h-[75vh] overflow-y-auto overscroll-contain scroll-smooth p-4 sm:p-6 bg-white"
               role="log"
               aria-live="polite"
             >
@@ -235,23 +259,25 @@ export default function ChatBox() {
                     className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
-                      className={`max-w-xs md:max-w-md lg:max-w-2xl px-6 py-4 rounded-2xl shadow-lg ${
+                      className={`max-w-[65ch] px-4 py-3 rounded-2xl ${
                         message.sender === 'user'
-                          ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-br-none'
-                          : 'bg-white/90 backdrop-blur-sm text-gray-800 rounded-bl-none border border-white/50'
+                          ? 'bg-gradient-to-r from-sky-600 to-indigo-600 text-white rounded-br-none shadow-md hover:shadow-lg transition-all duration-200'
+                          : 'bg-white text-slate-800 rounded-bl-none border border-slate-200 shadow-md hover:shadow-lg transition-all duration-200 prose prose-slate prose-sm max-w-none'
                       }`}
                     >
                       {message.sender === 'bot' ? (
-                        <MarkdownRenderer content={message.text} />
+                        <div className="space-y-2">
+                          <MarkdownRenderer content={message.text} />
+                        </div>
                       ) : (
-                        <p className="leading-relaxed">{message.text}</p>
+                        <p className="leading-relaxed text-lg">{message.text}</p>
                       )}
                     </div>
                   </div>
                 ))}
                 {isBotTyping && (
                   <div className="flex justify-start">
-                    <div className="bg-white/90 backdrop-blur-sm px-6 py-4 rounded-2xl rounded-bl-none border border-white/50 shadow-lg">
+                    <div className="bg-white px-6 py-4 rounded-2xl rounded-bl-none border border-slate-200 shadow-md">
                       <div className="flex space-x-1">
                         <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
                         <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
@@ -261,14 +287,23 @@ export default function ChatBox() {
                   </div>
                 )}
                 <div ref={messagesEndRef} />
+                {showJumpToBottom && (
+                  <button
+                    onClick={() => {
+                      setIsPinned(true);
+                      scrollToBottom();
+                    }}
+                    className="fixed bottom-24 right-8 bg-slate-800 text-white px-4 py-2 rounded-full shadow-lg hover:bg-slate-700 transition-colors z-10"
+                  >
+                    Jump to latest
+                  </button>
+                )}
               </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
 
       {/* Chat Input */}
-      <div className="border-t border-gray-200 p-4">
+      <div className="border-t border-slate-200 p-4 sm:p-6 bg-white">
         <div className="flex items-end space-x-3">
           <div className="flex-1 relative">
             <textarea
@@ -276,20 +311,20 @@ export default function ChatBox() {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
-              onClick={() => !isExpanded && setIsExpanded(true)}
-              placeholder="Ask me anything about SINU programs..."
-              className="w-full border-2 border-gray-200 rounded-2xl px-6 py-4 pr-12 focus:outline-none focus:border-blue-500 resize-none shadow-sm transition-all duration-200 bg-white/80 backdrop-blur-sm"
+
+              placeholder="Ask me anything about SINU programs..." style={{color: '#4B5563'}}
+              className="w-full border-2 border-slate-200 rounded-2xl px-6 py-4 pr-12 focus:outline-none focus:border-sky-500 resize-none shadow-sm transition-all duration-200 bg-white hover:border-slate-300"
               rows={1}
               maxLength={1000}
               aria-label="Chat input"
             />
-            <div className="absolute bottom-2 right-3 text-xs text-gray-400">
+            <div className="absolute bottom-2 right-3 text-xs text-gray-500">
               {inputValue.length}/1000
             </div>
           </div>
           <button
             onClick={handleSend}
-            className="p-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-full hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-4 bg-gradient-to-r from-sky-600 to-indigo-600 text-white rounded-full hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={!inputValue.trim()}
             aria-label="Send message"
           >
@@ -310,6 +345,6 @@ export default function ChatBox() {
           </button>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
