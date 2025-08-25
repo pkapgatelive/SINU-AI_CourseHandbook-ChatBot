@@ -1,109 +1,417 @@
-# Next.js Chat Application
+# Next.js Chat Application - Production Deployment
 
-A modern chat application built with Next.js 14+, Tailwind CSS, and TanStack React Query.
+A modern chat application built with Next.js 14+, Tailwind CSS, and TanStack React Query, with complete production deployment setup for Ubuntu VPS hosting.
 
-## Technologies Used
+## 🚀 Quick Deploy to VPS
 
-- [Next.js 14+](https://nextjs.org/) with App Router
-- [Tailwind CSS](https://tailwindcss.com/) for styling
-- [TanStack React Query](https://tanstack.com/query/latest) for server state management
-- [TypeScript](https://www.typescriptlang.org/) for type safety
-
-## Getting Started
-
-First, install the dependencies:
+Deploy your chatbot to any Ubuntu VPS (including Hostinger) in minutes:
 
 ```bash
-npm install
+# 1. Setup server
+sudo ./server-setup.sh chatbot.yourdomain.com admin@yourdomain.com
+
+# 2. Configure SSL
+sudo ./ssl-setup.sh chatbot.yourdomain.com admin@yourdomain.com ssr
+
+# 3. Deploy application
+./deploy.sh ssr chatbot.yourdomain.com
 ```
 
-Then, run the development server:
+**Your chatbot will be live at `https://chatbot.yourdomain.com`** 🎉
+
+## 📋 Table of Contents
+
+- [Features](#features)
+- [Technologies](#technologies)
+- [Local Development](#local-development)
+- [Production Deployment](#production-deployment)
+- [Deployment Modes](#deployment-modes)
+- [Auto-Deployment](#auto-deployment)
+- [Configuration](#configuration)
+- [Monitoring](#monitoring)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+
+## ✨ Features
+
+### Application Features
+- 🤖 **AI-powered chatbot** with n8n integration
+- 💬 **Real-time messaging** with session management
+- 🎨 **Modern UI** with Tailwind CSS and Framer Motion
+- 📱 **Responsive design** for all devices
+- 🔒 **Rate limiting** and security features
+- 📊 **Query state management** with TanStack React Query
+
+### Deployment Features
+- 🚀 **One-command deployment** to any Ubuntu VPS
+- 🔄 **Dual deployment modes**: Static export and SSR
+- 🔐 **Automatic SSL/HTTPS** with Let's Encrypt
+- 🔧 **Production-ready** with PM2 and Nginx
+- 📈 **Auto-deployment** via GitHub Actions or webhooks
+- 🛡️ **Security hardened** with firewall and fail2ban
+- 📊 **Comprehensive monitoring** and logging
+
+## 🛠 Technologies
+
+### Frontend
+- [Next.js 15](https://nextjs.org/) with App Router
+- [React 19](https://reactjs.org/)
+- [Tailwind CSS 4](https://tailwindcss.com/)
+- [TanStack React Query](https://tanstack.com/query/latest)
+- [Framer Motion](https://www.framer.com/motion/)
+- [TypeScript](https://www.typescriptlang.org/)
+
+### Backend & Infrastructure
+- [Node.js 18+](https://nodejs.org/)
+- [PM2](https://pm2.keymetrics.io/) process manager
+- [Nginx](https://nginx.org/) reverse proxy
+- [Let's Encrypt](https://letsencrypt.org/) SSL certificates
+- [n8n](https://n8n.io/) workflow automation
+
+## 🏃‍♂️ Local Development
+
+### Prerequisites
+- Node.js 18+ and npm
+- Git
+
+### Setup
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/pkapgatelive/SINU-AI_CourseHandbook-ChatBot.git
+   cd SINU-AI_CourseHandbook-ChatBot
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Configure environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your n8n webhook URL
+   ```
+
+4. **Start development server**
+   ```bash
+   npm run dev
+   ```
+
+5. **Open your browser**
+   ```
+   http://localhost:3000
+   ```
+
+### Development Scripts
 
 ```bash
-npm run dev
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run start        # Start production server
+npm run lint         # Run ESLint
+npm test             # Run tests (if available)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🌐 Production Deployment
 
-## Project Structure
+### Quick Start
 
-- `app/` - Next.js App Router pages and layouts
-- `components/` - React components
-- `lib/` - Utility functions and configurations
-- `types/` - TypeScript type definitions
+For detailed instructions, see the [Complete Deployment Guide](DEPLOYMENT_GUIDE.md).
 
-## Environment Variables
+#### 1. Server Setup
 
-Create a `.env` file with the following variables (`.env.example` is provided as a template):
+```bash
+# Connect to your VPS
+ssh root@your-vps-ip
+
+# Download and run server setup
+wget https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/server-setup.sh
+chmod +x server-setup.sh
+sudo ./server-setup.sh chatbot.yourdomain.com admin@yourdomain.com
+```
+
+#### 2. Domain Configuration
+
+Set up DNS A record:
+```
+Type: A
+Name: chatbot
+Value: YOUR_VPS_IP
+TTL: 300
+```
+
+See [Domain Setup Guide](DOMAIN_SETUP_GUIDE.md) for detailed instructions.
+
+#### 3. SSL Setup
+
+```bash
+# Switch to deploy user
+su - deploy
+
+# Setup SSL certificates
+sudo ./ssl-setup.sh chatbot.yourdomain.com admin@yourdomain.com ssr
+```
+
+#### 4. Deploy Application
+
+```bash
+# Clone your repository
+git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git nextjs-chat-app
+cd nextjs-chat-app
+
+# Deploy in SSR mode
+./deploy.sh ssr chatbot.yourdomain.com
+
+# Or deploy in static mode
+./deploy.sh static chatbot.yourdomain.com
+```
+
+## 🔧 Deployment Modes
+
+### SSR Mode (Recommended)
+- **Best for**: Full Next.js functionality, API routes, dynamic content
+- **Features**: Server-side rendering, PM2 process management
+- **Performance**: Good performance with full functionality
+
+```bash
+./deploy.sh ssr chatbot.yourdomain.com
+```
+
+### Static Export Mode
+- **Best for**: Maximum performance, CDN-friendly
+- **Features**: Pre-built static files, Nginx-served
+- **Performance**: Excellent performance, lower server resources
+
+```bash
+./deploy.sh static chatbot.yourdomain.com
+```
+
+### Comparison
+
+| Feature | SSR Mode | Static Mode |
+|---------|----------|-------------|
+| Performance | Good | Excellent |
+| API Routes | ✅ Native | ❌ Proxied only |
+| Build Time | Fast | Slower |
+| Server Resources | Higher | Lower |
+| Scalability | Good | Excellent |
+
+## 🔄 Auto-Deployment
+
+### GitHub Actions (Recommended)
+
+1. **Set repository secrets**:
+   ```
+   VPS_HOST=your-vps-ip
+   VPS_USER=deploy
+   VPS_SSH_KEY=your-private-ssh-key
+   DOMAIN=chatbot.yourdomain.com
+   ```
+
+2. **Push to main branch** - deployment happens automatically!
+
+3. **Manual deployment**: Use GitHub Actions tab to trigger deployments
+
+### Webhook Deployment
+
+1. **Start webhook server**:
+   ```bash
+   pm2 start ecosystem.config.js --only webhook-deploy
+   ```
+
+2. **Configure GitHub webhook**:
+   - URL: `http://your-vps-ip:3001/webhook`
+   - Content type: `application/json`
+   - Events: Push events
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+Create `.env` file in project root:
 
 ```env
-N8N_WEBHOOK_URL=https://ceit.app.n8n.cloud/webhook/5f1c0c82-0ff9-40c7-9e2e-b1a96ffe24cd/chat
+# n8n Integration
+N8N_WEBHOOK_URL=https://your-n8n-webhook-url
+
+# Rate Limiting
 RATE_LIMIT_WINDOW=900000
 RATE_LIMIT_MAX_REQUESTS=10
+
+# Application
+NODE_ENV=production
+PORT=3000
 ```
 
-### Setting Environment Variables
+### GitHub Secrets
 
-#### Vercel Deployment
+For auto-deployment, configure these secrets in your GitHub repository:
 
-For Vercel deployments, you can set environment variables through the Vercel dashboard:
+```
+VPS_HOST=your-vps-ip
+VPS_USER=deploy
+VPS_SSH_KEY=your-private-ssh-key
+DOMAIN=chatbot.yourdomain.com
+WEBHOOK_SECRET=your-webhook-secret
+```
 
-1. Go to your project settings in the Vercel dashboard
-2. Navigate to the "Environment Variables" section
-3. Add the following variables:
-   - `N8N_WEBHOOK_URL` - Your n8n webhook URL
-   - `RATE_LIMIT_WINDOW` - Rate limit window in milliseconds (default: 900000)
-   - `RATE_LIMIT_MAX_REQUESTS` - Maximum requests per window (default: 10)
+### PM2 Configuration
 
-You can also use the Vercel CLI:
+The [`ecosystem.config.js`](ecosystem.config.js) file configures:
+- Application process management
+- Environment variables
+- Logging configuration
+- Health monitoring
+- Webhook deployment server
+
+## 📊 Monitoring
+
+### Application Monitoring
+
 ```bash
-vercel env add N8N_WEBHOOK_URL
-vercel env add RATE_LIMIT_WINDOW
-vercel env add RATE_LIMIT_MAX_REQUESTS
+# View running processes
+pm2 list
+
+# View logs
+pm2 logs chatbot
+pm2 logs webhook-deploy
+
+# Monitor resources
+pm2 monit
+
+# Restart applications
+pm2 restart chatbot
 ```
 
-#### Self-hosted NGINX (Node Process)
+### System Monitoring
 
-For self-hosted deployments with NGINX, you can set environment variables in several ways:
+```bash
+# Check application health
+curl -I https://chatbot.yourdomain.com
 
-1. **Using a systemd service file** (if running with systemd):
-   ```ini
-   [Service]
-   Environment=N8N_WEBHOOK_URL=https://your-staging-webhook-url.com
-   Environment=RATE_LIMIT_WINDOW=900000
-   Environment=RATE_LIMIT_MAX_REQUESTS=10
-   ```
+# Check webhook server
+curl http://localhost:3001/health
 
-2. **Using a .env file** in your project root that gets loaded by your process manager
-
-3. **Setting environment variables in your shell** before starting the Node process:
-   ```bash
-   export N8N_WEBHOOK_URL=https://your-staging-webhook-url.com
-   export RATE_LIMIT_WINDOW=900000
-   export RATE_LIMIT_MAX_REQUESTS=10
-   npm start
-   ```
-
-### Swapping to a Staging Webhook
-
-To switch to a staging webhook, simply update the `N8N_WEBHOOK_URL` environment variable:
-
-```env
-# Staging webhook
-N8N_WEBHOOK_URL=https://your-staging-webhook-url.com
+# View system logs
+tail -f /var/log/nginx/chatbot-ssr.access.log
+tail -f /var/log/pm2/chatbot-combined.log
 ```
 
-This allows you to change the upstream webhook without making any code changes. The application will automatically use the new webhook URL after restarting the server.
+### Health Checks
 
-## Learn More
+The deployment includes built-in health checks:
+- Application endpoint monitoring
+- SSL certificate validation
+- Process health monitoring
+- System resource monitoring
 
-To learn more about Next.js, take a look at the following resources:
+## 🔍 Troubleshooting
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Common Issues
 
-## Deploy on Vercel
+#### Domain Not Resolving
+```bash
+# Check DNS configuration
+dig chatbot.yourdomain.com A
+nslookup chatbot.yourdomain.com
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+#### SSL Certificate Issues
+```bash
+# Check certificate status
+sudo certbot certificates
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Renew certificate
+sudo certbot renew --force-renewal
+```
+
+#### Application Not Starting
+```bash
+# Check PM2 logs
+pm2 logs chatbot
+
+# Restart application
+pm2 restart chatbot
+
+# Check environment variables
+pm2 env 0
+```
+
+#### Nginx 502 Bad Gateway
+```bash
+# Check if application is running
+pm2 list
+
+# Check Nginx error logs
+tail -f /var/log/nginx/error.log
+
+# Restart services
+pm2 restart chatbot
+sudo systemctl reload nginx
+```
+
+For more troubleshooting help, see the [Complete Deployment Guide](DEPLOYMENT_GUIDE.md#troubleshooting).
+
+## 📁 Project Structure
+
+```
+nextjs-chat-app/
+├── src/
+│   ├── app/                 # Next.js App Router
+│   │   ├── api/chat/        # Chat API endpoint
+│   │   ├── chat/            # Chat page
+│   │   └── globals.css      # Global styles
+│   ├── components/          # React components
+│   │   ├── ChatBox.tsx      # Main chat interface
+│   │   ├── ChatLauncher.tsx # Chat launcher button
+│   │   └── ...
+│   └── lib/                 # Utility functions
+├── public/                  # Static assets
+├── deployment/              # Deployment scripts
+│   ├── deploy.sh           # Main deployment script
+│   ├── server-setup.sh     # Server setup script
+│   ├── ssl-setup.sh        # SSL setup script
+│   ├── nginx-static.conf   # Nginx config (static)
+│   ├── nginx-ssr.conf      # Nginx config (SSR)
+│   ├── webhook-deploy.js   # Webhook server
+│   └── ecosystem.config.js # PM2 configuration
+├── .github/workflows/       # GitHub Actions
+├── docs/                   # Documentation
+└── README.md               # This file
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Commit your changes: `git commit -m 'Add amazing feature'`
+4. Push to the branch: `git push origin feature/amazing-feature`
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🆘 Support
+
+- 📖 **Documentation**: [Complete Deployment Guide](DEPLOYMENT_GUIDE.md)
+- 🌐 **Domain Setup**: [Domain Setup Guide](DOMAIN_SETUP_GUIDE.md)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/pkapgatelive/SINU-AI_CourseHandbook-ChatBot/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/pkapgatelive/SINU-AI_CourseHandbook-ChatBot/discussions)
+
+## 🎯 Roadmap
+
+- [ ] Docker containerization
+- [ ] Kubernetes deployment
+- [ ] Multi-language support
+- [ ] Advanced analytics
+- [ ] Load balancing setup
+- [ ] Database integration
+- [ ] Redis caching
+
+---
+
+**Made with ❤️ for the developer community**
+
+Deploy your Next.js chatbot to production in minutes, not hours!

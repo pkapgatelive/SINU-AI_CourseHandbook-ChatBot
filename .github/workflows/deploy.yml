@@ -1,0 +1,299 @@
+name: Deploy Next.js Chatbot to VPS
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      deploy_mode:
+        description: 'Deployment mode'
+        required: true
+        default: 'ssr'
+        type: choice
+        options:
+        - ssr
+        - static
+
+env:
+  NODE_VERSION: '18'
+  DEPLOY_USER: 'deploy'
+  APP_NAME: 'nextjs-chat-app'
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run tests (if available)
+      run: |
+        if [ -f "package.json" ] && grep -q '"test"' package.json; then
+          npm test -- --passWithNoTests
+        else
+          echo "No tests found, skipping..."
+        fi
+      
+    - name: Build application
+      run: npm run build
+      
+    - name: Setup SSH key
+      uses: webfactory/ssh-agent@v0.8.0
+      with:
+        ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+        
+    - name: Add VPS to known hosts
+      run: |
+        mkdir -p ~/.ssh
+        ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+        
+    - name: Create deployment script
+      run: |
+        cat > deploy_remote.sh << 'EOF'
+        #!/bin/bash
+        set -e
+        
+        # Configuration
+        REPO_URL="${{ github.server_url }}/${{ github.repository }}.git"
+        PROJECT_NAME="${{ env.APP_NAME }}"
+        APP_DIR="/home/${{ env.DEPLOY_USER }}/$PROJECT_NAME"
+        STATIC_DIR="/var/www/chatbot-public"
+        PM2_APP_NAME="chatbot"
+        DEPLOY_MODE="${{ github.event.inputs.deploy_mode || 'ssr' }}"
+        DOMAIN="${{ secrets.DOMAIN }}"
+        
+        # Colors for output
+        RED='\033[0;31m'
+        GREEN='\033[0;32m'
+        YELLOW='\033[1;33m'
+        BLUE='\033[0;34m'
+        NC='\033[0m'
+        
+        log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+        log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+        log_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+        log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+        
+        log_info "Starting GitHub Actions deployment..."
+        log_info "Repository: $REPO_URL"
+        log_info "Deploy mode: $DEPLOY_MODE"
+        log_info "Domain: $DOMAIN"
+        
+        # Update repository
+        if [[ -d "$APP_DIR" ]]; then
+          log_info "Repository exists. Pulling latest changes..."
+          cd "$APP_DIR"
+          git fetch origin
+          git reset --hard origin/main
+          git clean -fd
+        else
+          log_info "Cloning repository..."
+          git clone "$REPO_URL" "$APP_DIR"
+          cd "$APP_DIR"
+        fi
+        
+        # Setup environment variables
+        if [[ ! -f "$APP_DIR/.env" ]]; then
+          log_info "Creating .env file..."
+          cat > "$APP_DIR/.env" << 'ENVEOF'
+        N8N_WEBHOOK_URL=https://n8n.srv963093.hstgr.cloud/webhook/5f1c0c82-0ff9-40c7-9e2e-b1a96ffe24cd/chat
+        RATE_LIMIT_WINDOW=900000
+        RATE_LIMIT_MAX_REQUESTS=10
+        NODE_ENV=production
+        PORT=3000
+        ENVEOF
+        fi
+        
+        # Install dependencies
+        log_info "Installing dependencies..."
+        rm -rf node_modules package-lock.json
+        npm install --production=false
+        
+        # Build application
+        log_info "Building application for $DEPLOY_MODE mode..."
+        if [[ "$DEPLOY_MODE" == "static" ]]; then
+          # Configure for static export
+          cp next.config.ts next.config.ts.backup 2>/dev/null || true
+          cat > next.config.js << 'CONFIGEOF'
+        const nextConfig = {
+          output: 'export',
+          trailingSlash: true,
+          images: {
+            unoptimized: true
+          },
+          env: {
+            NEXT_PUBLIC_CHAT_API_ENDPOINT: process.env.NEXT_PUBLIC_CHAT_API_ENDPOINT || '/api/chat',
+            NEXT_PUBLIC_CHAT_TIMEOUT: process.env.NEXT_PUBLIC_CHAT_TIMEOUT || '30000',
+            NEXT_PUBLIC_CHAT_MAX_RETRIES: process.env.NEXT_PUBLIC_CHAT_MAX_RETRIES || '3',
+            NEXT_PUBLIC_CHAT_RETRY_DELAY: process.env.NEXT_PUBLIC_CHAT_RETRY_DELAY || '1000',
+          },
+          async headers() {
+            return [
+              {
+                source: '/(.*)',
+                headers: [
+                  {
+                    key: 'X-Chat-Config-Injected',
+                    value: 'true',
+                  },
+                ],
+              },
+            ];
+          },
+        };
+        module.exports = nextConfig;
+        CONFIGEOF
+          
+          npm run build
+          
+          # Restore original config
+          if [[ -f "next.config.ts.backup" ]]; then
+            mv next.config.ts.backup next.config.ts
+          fi
+          rm -f next.config.js
+          
+          # Deploy static files
+          log_info "Deploying static files..."
+          sudo mkdir -p "$STATIC_DIR"
+          sudo rm -rf "$STATIC_DIR"/*
+          sudo cp -r out/* "$STATIC_DIR"/
+          sudo chown -R www-data:www-data "$STATIC_DIR"
+          sudo chmod -R 755 "$STATIC_DIR"
+          
+        else
+          # SSR build
+          npm run build
+          
+          # Deploy SSR application
+          log_info "Deploying SSR application..."
+          
+          # Stop existing PM2 process if running
+          if pm2 list | grep -q "$PM2_APP_NAME"; then
+            log_info "Stopping existing PM2 process..."
+            pm2 stop "$PM2_APP_NAME"
+            pm2 delete "$PM2_APP_NAME"
+          fi
+          
+          # Start application with PM2
+          log_info "Starting application with PM2..."
+          pm2 start npm --name "$PM2_APP_NAME" -- start
+          pm2 save
+        fi
+        
+        # Test and reload Nginx
+        log_info "Reloading Nginx..."
+        if sudo nginx -t; then
+          sudo systemctl reload nginx
+          log_success "Nginx reloaded successfully."
+        else
+          log_error "Nginx configuration test failed."
+          exit 1
+        fi
+        
+        # Show deployment status
+        log_success "Deployment completed successfully!"
+        log_info "Application should be accessible at: https://$DOMAIN"
+        
+        if [[ "$DEPLOY_MODE" == "ssr" ]]; then
+          log_info "PM2 Status:"
+          pm2 list
+        fi
+        EOF
+        
+        chmod +x deploy_remote.sh
+        
+    - name: Deploy to VPS
+      env:
+        VPS_HOST: ${{ secrets.VPS_HOST }}
+        VPS_USER: ${{ secrets.VPS_USER }}
+        DOMAIN: ${{ secrets.DOMAIN }}
+        DEPLOY_MODE: ${{ github.event.inputs.deploy_mode || 'ssr' }}
+      run: |
+        # Copy deployment script to VPS and execute
+        scp deploy_remote.sh $VPS_USER@$VPS_HOST:/tmp/deploy_remote.sh
+        ssh $VPS_USER@$VPS_HOST "chmod +x /tmp/deploy_remote.sh && /tmp/deploy_remote.sh && rm /tmp/deploy_remote.sh"
+        
+    - name: Verify deployment
+      env:
+        DOMAIN: ${{ secrets.DOMAIN }}
+      run: |
+        echo "Waiting for deployment to stabilize..."
+        sleep 30
+        
+        # Test if the site is accessible
+        if curl -s -I "https://$DOMAIN" | grep -q "HTTP/"; then
+          echo "✅ Deployment verification successful!"
+          echo "🚀 Site is accessible at: https://$DOMAIN"
+        else
+          echo "❌ Deployment verification failed!"
+          echo "Please check the server logs."
+          exit 1
+        fi
+        
+    - name: Notify deployment status
+      if: always()
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "🎉 Deployment completed successfully!"
+          echo "🌐 Your chatbot is live at: https://${{ secrets.DOMAIN }}"
+        else
+          echo "💥 Deployment failed!"
+          echo "Please check the logs and try again."
+        fi
+
+  # Optional: Rollback job in case of failure
+  rollback:
+    name: Rollback on failure
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: failure()
+    
+    steps:
+    - name: Setup SSH key
+      uses: webfactory/ssh-agent@v0.8.0
+      with:
+        ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+        
+    - name: Add VPS to known hosts
+      run: |
+        mkdir -p ~/.ssh
+        ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+        
+    - name: Rollback deployment
+      env:
+        VPS_HOST: ${{ secrets.VPS_HOST }}
+        VPS_USER: ${{ secrets.VPS_USER }}
+      run: |
+        ssh $VPS_USER@$VPS_HOST << 'EOF'
+        set -e
+        
+        APP_DIR="/home/deploy/nextjs-chat-app"
+        PM2_APP_NAME="chatbot"
+        
+        echo "🔄 Rolling back deployment..."
+        
+        if [[ -d "$APP_DIR" ]]; then
+          cd "$APP_DIR"
+          
+          # Try to restart the previous version
+          if pm2 list | grep -q "$PM2_APP_NAME"; then
+            pm2 restart "$PM2_APP_NAME"
+            echo "✅ Previous version restarted"
+          else
+            echo "⚠️  No previous PM2 process found"
+          fi
+        fi
+        
+        echo "🔄 Rollback completed"
+        EOF
