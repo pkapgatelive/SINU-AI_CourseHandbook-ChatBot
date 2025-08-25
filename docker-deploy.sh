@@ -117,7 +117,7 @@ setup_firewall() {
     # Allow SSH, HTTP, and HTTPS
     ufw allow ssh
     ufw allow 8080/tcp
-    ufw allow 443/tcp
+    ufw allow 8443/tcp
     
     # Enable firewall
     ufw --force enable
@@ -224,7 +224,7 @@ create_fallback_nginx_config() {
     
     cat > nginx/conf.d/chatbot.conf << 'EOF'
 server {
-    listen 8080;
+    listen 80;
     server_name chatbot.kapgate.com;
     
     # Logging
@@ -291,7 +291,7 @@ verify_deployment() {
     fi
     
     # Test HTTP connection
-    if curl -f -s http://localhost/health > /dev/null; then
+    if curl -f -s http://localhost:8080/health > /dev/null; then
         log_success "HTTP health check passed."
     else
         log_warning "HTTP health check failed."
@@ -299,7 +299,7 @@ verify_deployment() {
     
     # Test HTTPS connection if SSL is configured
     if [[ -f "ssl/live/$DOMAIN/fullchain.pem" ]]; then
-        if curl -f -s https://$DOMAIN/health > /dev/null; then
+        if curl -f -s -k https://localhost:8443/health > /dev/null; then
             log_success "HTTPS health check passed."
         else
             log_warning "HTTPS health check failed."
@@ -344,11 +344,11 @@ show_final_status() {
     docker compose ps
     echo ""
     echo "==================== ACCESS INFORMATION ===================="
-    echo "🌐 Website: http://$DOMAIN"
+    echo "🌐 Website: http://$DOMAIN:8080"
     if [[ -f "ssl/live/$DOMAIN/fullchain.pem" ]]; then
-        echo "🔒 Secure: https://$DOMAIN"
+        echo "🔒 Secure: https://$DOMAIN:8443"
     fi
-    echo "📊 Health: http://$DOMAIN/health"
+    echo "📊 Health: http://$DOMAIN:8080/health"
     echo ""
     echo "==================== MANAGEMENT COMMANDS ===================="
     echo "View logs: cd $PROJECT_DIR && docker compose logs -f"

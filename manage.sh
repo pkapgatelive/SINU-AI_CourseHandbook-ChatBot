@@ -142,14 +142,14 @@ check_health() {
     fi
     
     # Check HTTP endpoint
-    if curl -f -s http://localhost/health > /dev/null; then
+    if curl -f -s http://localhost:8080/health > /dev/null; then
         log_success "✅ HTTP health check passed"
     else
         log_error "❌ HTTP health check failed"
     fi
     
     # Check HTTPS endpoint
-    if curl -f -s https://$DOMAIN/health > /dev/null 2>&1; then
+    if curl -f -s -k https://localhost:8443/health > /dev/null 2>&1; then
         log_success "✅ HTTPS health check passed"
     else
         log_warning "⚠️  HTTPS health check failed (SSL may not be configured)"
