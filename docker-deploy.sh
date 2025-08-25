@@ -116,7 +116,7 @@ setup_firewall() {
     
     # Allow SSH, HTTP, and HTTPS
     ufw allow ssh
-    ufw allow 80/tcp
+    ufw allow 8080/tcp
     ufw allow 443/tcp
     
     # Enable firewall
@@ -224,7 +224,7 @@ create_fallback_nginx_config() {
     
     cat > nginx/conf.d/chatbot.conf << 'EOF'
 server {
-    listen 80;
+    listen 8080;
     server_name chatbot.kapgate.com;
     
     # Logging
