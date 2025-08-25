@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # Next.js Chatbot Application
+  chatbot:
+    build: .
+    container_name: nextjs-chatbot
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - N8N_WEBHOOK_URL=https://n8n.srv963093.hstgr.cloud/webhook/5f1c0c82-0ff9-40c7-9e2e-b1a96ffe24cd/chat
+      - RATE_LIMIT_WINDOW=900000
+      - RATE_LIMIT_MAX_REQUESTS=10
+      - PORT=3000
+    networks:
+      - chatbot-network
+    depends_on:
+      - nginx
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - /var/log/nginx:/var/log/nginx
+    networks:
+      - chatbot-network
+    depends_on:
+      - certbot
+
+  # SSL Certificate Management
+  certbot:
+    image: certbot/certbot
+    container_name: certbot
+    volumes:
+      - ./ssl:/etc/letsencrypt
+      - ./ssl-challenge:/var/www/certbot
+    command: certonly --webroot --webroot-path=/var/www/certbot --email admin@kapgate.com --agree-tos --no-eff-email -d chatbot.kapgate.com
+    networks:
+      - chatbot-network
+
+networks:
+  chatbot-network:
+    driver: bridge
+
+volumes:
+  ssl-data:
+  nginx-logs:

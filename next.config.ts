@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  output: 'standalone',
+  
   env: {
     // Make chat configuration available to client-side
     NEXT_PUBLIC_CHAT_API_ENDPOINT: process.env.NEXT_PUBLIC_CHAT_API_ENDPOINT || '/api/chat',
