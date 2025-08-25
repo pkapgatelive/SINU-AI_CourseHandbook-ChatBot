@@ -6,17 +6,18 @@
  * @returns A UUID string
  */
 function generateUUID(): string {
-  // Use crypto API if available (more secure and better randomness)
+  // Generate a 32-character session ID (no hyphens) as required
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
+    return crypto.randomUUID().replace(/-/g, '');
   }
   
   // Fallback to Math.random() implementation for environments without crypto
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c == 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
+  // Generate 32 hex characters
+  let result = '';
+  for (let i = 0; i < 32; i++) {
+    result += Math.floor(Math.random() * 16).toString(16);
+  }
+  return result;
 }
 
 /**

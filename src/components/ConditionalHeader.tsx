@@ -1,6 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
+import Link from 'next/link';
 
 export default function ConditionalHeader() {
   const pathname = usePathname();
@@ -14,18 +15,18 @@ export default function ConditionalHeader() {
         <nav className="flex justify-between items-center">
           <div className="text-xl font-bold text-primary">Next.js Chat</div>
           <div className="flex space-x-6">
-            <a
+            <Link
               href="/"
               className="text-foreground hover:text-primary transition-colors duration-200"
             >
               Home
-            </a>
-            <a
+            </Link>
+            <Link
               href="/chat"
               className="text-foreground hover:text-primary transition-colors duration-200"
             >
               Chat
-            </a>
+            </Link>
           </div>
         </nav>
       </div>

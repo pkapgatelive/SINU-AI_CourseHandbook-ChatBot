@@ -2,14 +2,19 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { chatClient, performPreflightCheck, ChatMessage } from '@/lib/chatClient';
+import { ChatErrorType, chatLogger } from '@/lib/chatConfig';
 
-const throttle = (func: Function, limit: number) => {
-  let inThrottle: boolean;
-  return function (...args: any[]) {
+type GenericFunction<Args extends unknown[]> = (...args: Args) => void;
+const throttle = <Args extends unknown[]>(func: GenericFunction<Args>, limit: number) => {
+  let inThrottle = false;
+  return (...args: Args) => {
     if (!inThrottle) {
-      func.apply(null, args);
+      func(...args);
       inThrottle = true;
-      setTimeout(() => (inThrottle = false), limit);
+      setTimeout(() => {
+        inThrottle = false;
+      }, limit);
     }
   };
 };
@@ -21,13 +26,27 @@ interface ChatBoxProps {
   inputRef?: React.RefObject<HTMLTextAreaElement | null>;
 }
 
+interface ServiceStatus {
+  online: boolean;
+  error?: string;
+  checking: boolean;
+}
+
+interface RetryState {
+  canRetry: boolean;
+  lastMessage?: string;
+  retrying: boolean;
+}
+
 export default function ChatBox({ inputRef }: ChatBoxProps) {
-  const [messages, setMessages] = useState<{id: number, text: string, sender: 'user' | 'bot'}[]>([
+  const [messages, setMessages] = useState<{id: number, text: string, sender: 'user' | 'bot', errorCode?: string}[]>([
     { id: 1, text: "Hello! I'm SINU's AI assistant. How can I help you today? You can ask me about diploma programs, entry requirements, or any other questions about SINU.", sender: 'bot' }
   ]);
   const [inputValue, setInputValue] = useState('');
   const [sessionId, setSessionId] = useState<string>('');
   const [isBotTyping, setIsBotTyping] = useState(false);
+  const [serviceStatus, setServiceStatus] = useState<ServiceStatus>({ online: true, checking: false });
+  const [retryState, setRetryState] = useState<RetryState>({ canRetry: false, retrying: false });
 
   const { addToast } = useToast();
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
@@ -39,7 +58,37 @@ export default function ChatBox({ inputRef }: ChatBoxProps) {
   useEffect(() => {
     const sessionId = getSessionId();
     setSessionId(sessionId);
+    
+    // Perform preflight check on component mount
+    performInitialHealthCheck();
   }, []);
+
+  const performInitialHealthCheck = async () => {
+    setServiceStatus({ online: true, checking: true });
+    
+    try {
+      const result = await performPreflightCheck();
+      
+      if (result.success) {
+        setServiceStatus({ online: true, checking: false });
+        chatLogger.log('info', 'INIT', 'Service is online and ready');
+      } else {
+        setServiceStatus({ 
+          online: false, 
+          checking: false, 
+          error: result.error || 'Service unavailable' 
+        });
+        chatLogger.log('warn', 'INIT', 'Service appears to be offline', { error: result.error });
+      }
+    } catch (error: any) {
+      setServiceStatus({ 
+        online: false, 
+        checking: false, 
+        error: 'Failed to check service status' 
+      });
+      chatLogger.log('error', 'INIT', 'Health check failed', error);
+    }
+  };
 
   const [isPinned, setIsPinned] = useState(true);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
@@ -77,74 +126,72 @@ export default function ChatBox({ inputRef }: ChatBoxProps) {
   }, [messages]);
 
   const sendMessageMutation = useMutation({
-    mutationFn: async (messageData: { sessionId: string; message: string; metadata?: any }) => {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(messageData),
-      });
-
-      if (!response.ok) {
-        let errorDetails = 'Failed to send message. Please try again.';
-        try {
-          const contentType = response.headers.get('Content-Type');
-          if (contentType && contentType.includes('application/json')) {
-            const errorData = await response.json();
-            errorDetails = errorData.error || errorData.message || errorDetails;
-          } else {
-            errorDetails = await response.text();
-            if (!errorDetails) {
-              errorDetails = response.statusText || `HTTP ${response.status}`;
-            }
-          }
-        } catch (e) {
-          try {
-            errorDetails = await response.text();
-          } catch (textError) {
-            errorDetails = response.statusText || `HTTP ${response.status}`;
-          }
-        }
-        
-        if (response.status === 429) {
-          throw new Error(errorDetails || 'Rate limit exceeded. Please try again later.');
-        } else {
-          throw new Error(errorDetails);
-        }
-      }
-
-      const contentType = response.headers.get('Content-Type');
-      if (contentType && contentType.includes('application/json')) {
-        return await response.json();
-      } else {
-        const text = await response.text();
-        return { message: text };
-      }
+    mutationFn: async (messageData: ChatMessage) => {
+      return await chatClient.sendMessage(messageData);
     },
     onSuccess: async (data) => {
-      let responseText = '';
-      if (data.reply) {
-        responseText = data.reply;
-      } else if (data.response) {
-        responseText = data.response;
-      } else if (data.message) {
-        responseText = data.message;
-      } else if (data.text) {
-        responseText = data.text;
-      } else if (data.content) {
-        responseText = data.content;
-      } else if (data.output) {
-        responseText = data.output;
-      } else if (data.result) {
-        responseText = data.result;
-      } else if (data.answer) {
-        responseText = data.answer;
-      } else if (typeof data === 'string') {
-        responseText = data;
-      } else {
-        const possibleTextFields = Object.values(data).find(value =>
-          typeof value === 'string' && value.trim().length > 0
-        ) as string | undefined;
-        responseText = possibleTextFields || "I received your message. This is a simulated response.";
+      // Helper to robustly extract readable text
+      const extractText = (input: unknown, visited = new Set<object>()): string | null => {
+        const preferred = ['reply', 'response', 'message', 'text', 'content', 'output', 'result', 'answer'];
+        if (input == null) return null;
+        if (typeof input === 'string') {
+          const trimmed = input.trim();
+          return trimmed.length > 0 ? trimmed : null;
+        }
+        if (typeof input === 'number' || typeof input === 'boolean') {
+          return String(input);
+        }
+        if (Array.isArray(input)) {
+          for (const item of input) {
+            const ex = extractText(item, visited);
+            if (ex) return ex;
+          }
+          return null;
+        }
+        if (typeof input === 'object') {
+          const obj = input as Record<string, unknown>;
+          if (visited.has(obj)) return null;
+          visited.add(obj);
+          for (const key of preferred) {
+            const ex = extractText(obj[key], visited);
+            if (ex) return ex;
+          }
+          const containers = ['data', 'json', 'body', 'payload', 'choices'];
+          for (const key of containers) {
+            if (key in obj) {
+              const ex = extractText(obj[key], visited);
+              if (ex) return ex;
+            }
+          }
+          for (const value of Object.values(obj)) {
+            const ex = extractText(value, visited);
+            if (ex) return ex;
+          }
+          return null;
+        }
+        return null;
+      };
+
+      const tryParseJsonString = (value: string): unknown => {
+        try {
+          return JSON.parse(value);
+        } catch {
+          return null;
+        }
+      };
+
+      let responseText = extractText(data) || '';
+
+      // If responseText looks like a JSON object string, attempt to parse and extract
+      if (!responseText || (/^\s*\{[\s\S]*\}\s*$/.test(responseText) || /^\s*\[[\s\S]*\]\s*$/.test(responseText))) {
+        const parsed = typeof responseText === 'string' ? tryParseJsonString(responseText) : null;
+        const fromParsed = parsed ? extractText(parsed) : null;
+        if (fromParsed) responseText = fromParsed;
+      }
+
+      // Friendly fallback if still empty or looks like {"output":null}
+      if (!responseText || /"output"\s*:\s*null/.test(responseText)) {
+        responseText = 'Sorry, I could not generate a response at the moment. Please try again or rephrase your question.';
       }
       
       const botMessage = {
@@ -154,16 +201,57 @@ export default function ChatBox({ inputRef }: ChatBoxProps) {
       };
       setMessages(prev => [...prev, botMessage]);
       setIsBotTyping(false);
+      setRetryState({ canRetry: false, retrying: false });
+      
+      // Update service status to online if it was offline
+      if (!serviceStatus.online) {
+        setServiceStatus({ online: true, checking: false });
+      }
     },
     onError: (error: Error) => {
       console.error('Error sending message:', error);
-      addToast(error.message || "Sorry, I encountered an error. Please try again.", 'error');
+      
+      const errorCode = chatClient.getErrorCode();
+      let errorMessage = error.message;
+      let canRetry = true;
+      
+      // Categorize error for better UX
+      if (error.message.includes('connect') || error.message.includes('network')) {
+        errorMessage = 'Unable to connect to the chat service. Please check your internet connection.';
+        setServiceStatus({ online: false, checking: false, error: 'Connection failed' });
+      } else if (error.message.includes('timeout')) {
+        errorMessage = 'Request timed out. The service may be experiencing high load.';
+      } else if (error.message.includes('Rate limit')) {
+        errorMessage = 'Too many requests. Please wait a moment before trying again.';
+      } else if (error.message.includes('unavailable')) {
+        errorMessage = 'The chat service is temporarily unavailable. Please try again in a few moments.';
+        setServiceStatus({ online: false, checking: false, error: 'Service unavailable' });
+      } else if (error.message.includes('rephrasing')) {
+        canRetry = false;
+      }
+
+      // Add error message to chat
+      const errorBotMessage = {
+        id: messageIdCounter.current++,
+        text: errorMessage,
+        sender: 'bot' as const,
+        errorCode: errorCode
+      };
+      setMessages(prev => [...prev, errorBotMessage]);
+      
       setIsBotTyping(false);
+      setRetryState({ 
+        canRetry, 
+        lastMessage: retryState.lastMessage,
+        retrying: false 
+      });
+      
+      addToast(`${errorMessage} (Error: ${errorCode})`, 'error');
     },
   });
 
-  const handleSend = async () => {
-    const trimmedInput = inputValue.trim();
+  const handleSend = async (messageText?: string) => {
+    const trimmedInput = (messageText || inputValue).trim();
     if (!trimmedInput) {
       addToast('Please enter a message before sending', 'warning');
       return;
@@ -180,7 +268,11 @@ export default function ChatBox({ inputRef }: ChatBoxProps) {
       return;
     }
 
-
+    // Check service status before sending
+    if (!serviceStatus.online && !serviceStatus.checking) {
+      addToast('Chat service is currently offline. Please try again later.', 'error');
+      return;
+    }
 
     const newUserMessage = {
       id: messageIdCounter.current++,
@@ -189,12 +281,14 @@ export default function ChatBox({ inputRef }: ChatBoxProps) {
     };
     
     setMessages(prev => [...prev, newUserMessage]);
-    setInputValue('');
+    if (!messageText) setInputValue(''); // Only clear input if this is a new message, not a retry
     setIsBotTyping(true);
+    setRetryState({ canRetry: false, lastMessage: trimmedInput, retrying: !!messageText });
 
     const metadata = {
       timestamp: new Date().toISOString(),
       userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+      retry: !!messageText
     };
     
     sendMessageMutation.mutate({
@@ -204,6 +298,12 @@ export default function ChatBox({ inputRef }: ChatBoxProps) {
     });
   };
 
+  const handleRetry = () => {
+    if (retryState.lastMessage && retryState.canRetry) {
+      handleSend(retryState.lastMessage);
+    }
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -211,8 +311,47 @@ export default function ChatBox({ inputRef }: ChatBoxProps) {
     }
   };
 
+  const handleHealthCheck = async () => {
+    setServiceStatus({ ...serviceStatus, checking: true });
+    await performInitialHealthCheck();
+  };
+
   return (
     <div className="flex flex-col h-full">
+      {/* Service Status Banner */}
+      {(!serviceStatus.online || serviceStatus.checking) && (
+        <div className={`px-4 py-2 text-sm font-medium ${
+          serviceStatus.checking 
+            ? 'bg-yellow-50 text-yellow-800 border-b border-yellow-200' 
+            : 'bg-red-50 text-red-800 border-b border-red-200'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              {serviceStatus.checking ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span>Checking service status...</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  <span>Service offline: {serviceStatus.error}</span>
+                </>
+              )}
+            </div>
+            {!serviceStatus.checking && (
+              <button
+                onClick={handleHealthCheck}
+                className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-800 rounded text-xs font-medium transition-colors"
+              >
+                Retry Connection
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Chat Header */}
       <div className="flex justify-between items-center p-4 sm:p-6 border-b border-slate-200">
@@ -224,7 +363,9 @@ export default function ChatBox({ inputRef }: ChatBoxProps) {
           </div>
           <div>
             <h1 id="chat-modal-title" className="text-lg font-semibold bg-gradient-to-r from-sky-600 to-indigo-600 bg-clip-text text-transparent">SINU AI Assistant</h1>
-            <p className="text-sm text-slate-500">Online • Ready to help</p>
+            <p className="text-sm text-slate-500">
+              {serviceStatus.checking ? 'Checking status...' : serviceStatus.online ? 'Online • Ready to help' : 'Offline • Limited functionality'}
+            </p>
           </div>
         </div>
         <button
@@ -235,6 +376,8 @@ export default function ChatBox({ inputRef }: ChatBoxProps) {
             setMessages([
               { id: 1, text: "Hello! I'm SINU's AI assistant. How can I help you today? You can ask me about diploma programs, entry requirements, or any other questions about SINU.", sender: 'bot' }
             ]);
+            setRetryState({ canRetry: false, retrying: false });
+            chatClient.cancelRequest();
           }}
           className="px-4 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 text-white rounded-full text-sm font-medium hover:shadow-lg transition-all duration-200"
           aria-label="Reset chat"
@@ -244,63 +387,91 @@ export default function ChatBox({ inputRef }: ChatBoxProps) {
       </div>
 
       {/* Chat Messages */}
-
-
-            <div 
-              ref={chatContainerRef}
-              className="h-[70vh] md:h-[75vh] overflow-y-auto overscroll-contain scroll-smooth p-4 sm:p-6 bg-white"
-              role="log"
-              aria-live="polite"
+      <div 
+        ref={chatContainerRef}
+        className="h-[70vh] md:h-[75vh] overflow-y-auto overscroll-contain scroll-smooth p-4 sm:p-6 bg-white"
+        role="log"
+        aria-live="polite"
+      >
+        <div className="space-y-4">
+          {messages.map((message) => (
+            <div
+              key={message.id}
+              className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              <div className="space-y-4">
-                {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div
-                      className={`max-w-[65ch] px-4 py-3 rounded-2xl ${
-                        message.sender === 'user'
-                          ? 'bg-gradient-to-r from-sky-600 to-indigo-600 text-white rounded-br-none shadow-md hover:shadow-lg transition-all duration-200'
-                          : 'bg-white text-slate-800 rounded-bl-none border border-slate-200 shadow-md hover:shadow-lg transition-all duration-200 prose prose-slate prose-sm max-w-none'
-                      }`}
-                    >
-                      {message.sender === 'bot' ? (
-                        <div className="space-y-2">
-                          <MarkdownRenderer content={message.text} />
-                        </div>
-                      ) : (
-                        <p className="leading-relaxed text-lg">{message.text}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {isBotTyping && (
-                  <div className="flex justify-start">
-                    <div className="bg-white px-6 py-4 rounded-2xl rounded-bl-none border border-slate-200 shadow-md">
-                      <div className="flex space-x-1">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+              <div
+                className={`max-w-[65ch] px-4 py-3 rounded-2xl ${
+                  message.sender === 'user'
+                    ? 'bg-gradient-to-r from-sky-600 to-indigo-600 text-white rounded-br-none shadow-md hover:shadow-lg transition-all duration-200'
+                    : `${message.errorCode ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'} text-slate-800 rounded-bl-none border shadow-md hover:shadow-lg transition-all duration-200 prose prose-slate prose-sm max-w-none`
+                }`}
+              >
+                {message.sender === 'bot' ? (
+                  <div className="space-y-2">
+                    <MarkdownRenderer content={message.text} />
+                    {message.errorCode && (
+                      <div className="text-xs text-red-600 font-mono mt-2 pt-2 border-t border-red-200">
+                        Error Code: {message.errorCode}
                       </div>
-                    </div>
+                    )}
                   </div>
-                )}
-                <div ref={messagesEndRef} />
-                {showJumpToBottom && (
-                  <button
-                    onClick={() => {
-                      setIsPinned(true);
-                      scrollToBottom();
-                    }}
-                    className="fixed bottom-24 right-8 bg-slate-800 text-white px-4 py-2 rounded-full shadow-lg hover:bg-slate-700 transition-colors z-10"
-                  >
-                    Jump to latest
-                  </button>
+                ) : (
+                  <p className="leading-relaxed text-lg">{message.text}</p>
                 )}
               </div>
             </div>
-
+          ))}
+          {isBotTyping && (
+            <div className="flex justify-start">
+              <div className="bg-white px-6 py-4 rounded-2xl rounded-bl-none border border-slate-200 shadow-md">
+                <div className="flex space-x-1">
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Retry Button */}
+          {retryState.canRetry && !isBotTyping && (
+            <div className="flex justify-center">
+              <button
+                onClick={handleRetry}
+                disabled={retryState.retrying}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-full text-sm font-medium transition-colors flex items-center space-x-2"
+              >
+                {retryState.retrying ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Retrying...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span>Retry Last Message</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+          
+          <div ref={messagesEndRef} />
+          {showJumpToBottom && (
+            <button
+              onClick={() => {
+                setIsPinned(true);
+                scrollToBottom();
+              }}
+              className="fixed bottom-24 right-8 bg-slate-800 text-white px-4 py-2 rounded-full shadow-lg hover:bg-slate-700 transition-colors z-10"
+            >
+              Jump to latest
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Chat Input */}
       <div className="border-t border-slate-200 p-4 sm:p-6 bg-white">
@@ -311,21 +482,22 @@ export default function ChatBox({ inputRef }: ChatBoxProps) {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
-
-              placeholder="Ask me anything about SINU programs..." style={{color: '#4B5563'}}
+              placeholder="Ask me anything about SINU programs..." 
+              style={{color: '#4B5563'}}
               className="w-full border-2 border-slate-200 rounded-2xl px-6 py-4 pr-12 focus:outline-none focus:border-sky-500 resize-none shadow-sm transition-all duration-200 bg-white hover:border-slate-300"
               rows={1}
               maxLength={1000}
               aria-label="Chat input"
+              disabled={!serviceStatus.online || isBotTyping}
             />
             <div className="absolute bottom-2 right-3 text-xs text-gray-500">
               {inputValue.length}/1000
             </div>
           </div>
           <button
-            onClick={handleSend}
+            onClick={() => handleSend()}
             className="p-4 bg-gradient-to-r from-sky-600 to-indigo-600 text-white rounded-full hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={!inputValue.trim()}
+            disabled={!inputValue.trim() || !serviceStatus.online || isBotTyping}
             aria-label="Send message"
           >
             <svg

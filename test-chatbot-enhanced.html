@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Chatbot Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .typing-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #9CA3AF;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+        .typing-indicator:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator:nth-child(2) { animation-delay: -0.16s; }
+        .typing-indicator:nth-child(3) { animation-delay: 0s; }
+        
+        @keyframes typing {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+        
+        .error-message {
+            background-color: #FEF2F2;
+            border: 1px solid #FECACA;
+            color: #DC2626;
+        }
+        
+        .retry-button {
+            background-color: #3B82F6;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 8px;
+        }
+        
+        .retry-button:hover {
+            background-color: #2563EB;
+        }
+        
+        .retry-button:disabled {
+            background-color: #9CA3AF;
+            cursor: not-allowed;
+        }
+        
+        .service-banner {
+            padding: 12px 16px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .service-banner.checking {
+            background-color: #FFFBEB;
+            color: #D97706;
+            border-bottom: 1px solid #FDE68A;
+        }
+        
+        .service-banner.offline {
+            background-color: #FEF2F2;
+            color: #DC2626;
+            border-bottom: 1px solid #FECACA;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto max-w-4xl h-screen flex flex-col">
+        <!-- Service Status Banner -->
+        <div id="serviceBanner" class="service-banner checking" style="display: none;">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <div id="statusIcon" class="w-4 h-4 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin"></div>
+                    <span id="statusText">Checking service status...</span>
+                </div>
+                <button id="retryConnection" class="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-800 rounded text-xs font-medium transition-colors" style="display: none;">
+                    Retry Connection
+                </button>
+            </div>
+        </div>
+
+        <!-- Chat Header -->
+        <div class="bg-white shadow-sm border-b p-6">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold text-gray-900">Enhanced Chatbot Test</h1>
+                        <p id="statusIndicator" class="text-sm text-gray-500">Initializing...</p>
+                    </div>
+                </div>
+                <button id="resetChat" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                    Reset
+                </button>
+            </div>
+        </div>
+
+        <!-- Chat Messages -->
+        <div id="chatContainer" class="flex-1 bg-white overflow-y-auto p-6">
+            <div id="messages" class="space-y-4">
+                <!-- Messages will be added here -->
+            </div>
+            <div id="typingIndicator" class="flex justify-start mt-4" style="display: none;">
+                <div class="bg-gray-100 px-4 py-3 rounded-lg">
+                    <div class="flex space-x-1">
+                        <div class="typing-indicator"></div>
+                        <div class="typing-indicator"></div>
+                        <div class="typing-indicator"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Input -->
+        <div class="bg-white border-t p-6">
+            <div class="flex space-x-4">
+                <input 
+                    type="text" 
+                    id="messageInput" 
+                    placeholder="Type your message here..." 
+                    class="flex-1 border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    maxlength="1000"
+                >
+                <button 
+                    id="sendButton" 
+                    class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                    Send
+                </button>
+            </div>
+            <div class="text-xs text-gray-500 mt-2">
+                <span id="charCount">0</span>/1000 characters
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Enhanced Chatbot Test Implementation
+        class EnhancedChatbot {
+            constructor() {
+                this.messages = [];
+                this.sessionId = this.generateSessionId();
+                this.isTyping = false;
+                this.serviceOnline = true;
+                this.lastMessage = null;
+                this.retryCount = 0;
+                this.maxRetries = 3;
+                this.baseRetryDelay = 1000;
+                
+                this.initializeElements();
+                this.attachEventListeners();
+                this.performHealthCheck();
+                this.addWelcomeMessage();
+            }
+            
+            initializeElements() {
+                this.elements = {
+                    serviceBanner: document.getElementById('serviceBanner'),
+                    statusIcon: document.getElementById('statusIcon'),
+                    statusText: document.getElementById('statusText'),
+                    retryConnection: document.getElementById('retryConnection'),
+                    statusIndicator: document.getElementById('statusIndicator'),
+                    messagesContainer: document.getElementById('messages'),
+                    messageInput: document.getElementById('messageInput'),
+                    sendButton: document.getElementById('sendButton'),
+                    resetButton: document.getElementById('resetChat'),
+                    typingIndicator: document.getElementById('typingIndicator'),
+                    charCount: document.getElementById('charCount')
+                };
+            }
+            
+            attachEventListeners() {
+                this.elements.sendButton.addEventListener('click', () => this.sendMessage());
+                this.elements.messageInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.sendMessage();
+                });
+                this.elements.messageInput.addEventListener('input', (e) => {
+                    this.elements.charCount.textContent = e.target.value.length;
+                });
+                this.elements.resetButton.addEventListener('click', () => this.resetChat());
+                this.elements.retryConnection.addEventListener('click', () => this.performHealthCheck());
+            }
+            
+            generateSessionId() {
+                return 'test-' + Math.random().toString(36).substr(2, 9) + '-' + Date.now();
+            }
+            
+            async performHealthCheck() {
+                this.updateServiceStatus('checking', 'Checking service status...');
+                
+                try {
+                    const response = await fetch('/api/chat', {
+                        method: 'GET',
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    
+                    if (response.ok) {
+                        this.updateServiceStatus('online', 'Online • Ready to help');
+                        this.serviceOnline = true;
+                    } else {
+                        this.updateServiceStatus('offline', `Service error: HTTP ${response.status}`);
+                        this.serviceOnline = false;
+                    }
+                } catch (error) {
+                    this.updateServiceStatus('offline', `Connection failed: ${error.message}`);
+                    this.serviceOnline = false;
+                }
+            }
+            
+            updateServiceStatus(status, message) {
+                const banner = this.elements.serviceBanner;
+                const icon = this.elements.statusIcon;
+                const text = this.elements.statusText;
+                const retryBtn = this.elements.retryConnection;
+                const indicator = this.elements.statusIndicator;
+                
+                if (status === 'checking') {
+                    banner.className = 'service-banner checking';
+                    banner.style.display = 'block';
+                    icon.className = 'w-4 h-4 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin';
+                    retryBtn.style.display = 'none';
+                } else if (status === 'offline') {
+                    banner.className = 'service-banner offline';
+                    banner.style.display = 'block';
+                    icon.innerHTML = '<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>';
+                    retryBtn.style.display = 'block';
+                } else {
+                    banner.style.display = 'none';
+                }
+                
+                text.textContent = message;
+                indicator.textContent = message;
+                
+                // Update send button state
+                this.elements.sendButton.disabled = !this.serviceOnline || this.isTyping;
+                this.elements.messageInput.disabled = !this.serviceOnline || this.isTyping;
+            }
+            
+            addWelcomeMessage() {
+                this.addMessage('bot', "Hello! I'm the enhanced SINU AI assistant. This test version includes improved error handling, retry logic, health checks, and better user feedback. Try sending a message!");
+            }
+            
+            addMessage(sender, text, isError = false, errorCode = null) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `flex ${sender === 'user' ? 'justify-end' : 'justify-start'}`;
+                
+                const bubbleClass = sender === 'user' 
+                    ? 'bg-blue-600 text-white rounded-br-none' 
+                    : isError 
+                        ? 'error-message rounded-bl-none' 
+                        : 'bg-gray-100 text-gray-900 rounded-bl-none';
+                
+                let errorCodeHtml = '';
+                if (errorCode) {
+                    errorCodeHtml = `<div class="text-xs font-mono mt-2 pt-2 border-t border-red-300">Error Code: ${errorCode}</div>`;
+                }
+                
+                messageDiv.innerHTML = `
+                    <div class="max-w-xs lg:max-w-md px-4 py-3 rounded-lg ${bubbleClass}">
+                        <p class="text-sm">${text}</p>
+                        ${errorCodeHtml}
+                    </div>
+                `;
+                
+                this.elements.messagesContainer.appendChild(messageDiv);
+                this.scrollToBottom();
+                
+                // Add retry button for error messages
+                if (isError && this.lastMessage) {
+                    this.addRetryButton();
+                }
+            }
+            
+            addRetryButton() {
+                const retryDiv = document.createElement('div');
+                retryDiv.className = 'flex justify-center mt-4';
+                retryDiv.innerHTML = `
+                    <button class="retry-button" onclick="chatbot.retryLastMessage()">
+                        <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        Retry Last Message
+                    </button>
+                `;
+                this.elements.messagesContainer.appendChild(retryDiv);
+                this.scrollToBottom();
+            }
+            
+            async sendMessage(retryMessage = null) {
+                const message = retryMessage || this.elements.messageInput.value.trim();
+                
+                if (!message) {
+                    alert('Please enter a message');
+                    return;
+                }
+                
+                if (!this.serviceOnline) {
+                    alert('Chat service is currently offline. Please try again later.');
+                    return;
+                }
+                
+                // Add user message (only if not a retry)
+                if (!retryMessage) {
+                    this.addMessage('user', message);
+                    this.elements.messageInput.value = '';
+                    this.elements.charCount.textContent = '0';
+                    this.lastMessage = message;
+                }
+                
+                // Show typing indicator
+                this.setTyping(true);
+                
+                try {
+                    const response = await this.sendWithRetry(message);
+                    this.handleSuccessResponse(response);
+                    this.retryCount = 0;
+                } catch (error) {
+                    this.handleErrorResponse(error);
+                }
+            }
+            
+            async sendWithRetry(message, attempt = 1) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+                    
+                    const response = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            sessionId: this.sessionId,
+                            message: message,
+                            metadata: {
+                                timestamp: new Date().toISOString(),
+                                userAgent: navigator.userAgent,
+                                attempt: attempt
+                            }
+                        }),
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (!response.ok) {
+                        if (response.status === 429) {
+                            throw new Error('Rate limit exceeded. Please wait before sending another message.');
+                        } else if (response.status >= 500) {
+                            throw new Error('The chat service is temporarily unavailable. Please try again in a few moments.');
+                        } else {
+                            const errorText = await response.text();
+                            throw new Error(errorText || `HTTP ${response.status}: ${response.statusText}`);
+                        }
+                    }
+                    
+                    const data = await response.json();
+                    return data;
+                    
+                } catch (error) {
+                    if (error.name === 'AbortError') {
+                        throw new Error('Request timed out. The service may be experiencing high load.');
+                    }
+                    
+                    // Retry logic for retryable errors
+                    if (attempt < this.maxRetries && this.isRetryableError(error)) {
+                        const delay = this.calculateBackoffDelay(attempt);
+                        console.log(`Retrying in ${delay}ms (attempt ${attempt + 1}/${this.maxRetries})`);
+                        await this.sleep(delay);
+                        return this.sendWithRetry(message, attempt + 1);
+                    }
+                    
+                    throw error;
+                }
+            }
+            
+            isRetryableError(error) {
+                const message = error.message.toLowerCase();
+                return message.includes('network') || 
+                       message.includes('timeout') || 
+                       message.includes('unavailable') ||
+                       message.includes('rate limit');
+            }
+            
+            calculateBackoffDelay(attempt) {
+                return Math.min(this.baseRetryDelay * Math.pow(2, attempt - 1), 10000);
+            }
+            
+            sleep(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+            
+            handleSuccessResponse(data) {
+                this.setTyping(false);
+                
+                // Extract response text
+                let responseText = data.reply || data.message || data.response || '';
+                
+                if (!responseText) {
+                    responseText = 'Sorry, I could not generate a response at the moment. Please try again or rephrase your question.';
+                }
+                
+                this.addMessage('bot', responseText);
+                
+                // Update service status if it was offline
+                if (!this.serviceOnline) {
+                    this.updateServiceStatus('online', 'Online • Ready to help');
+                    this.serviceOnline = true;
+                }
+            }
+            
+            handleErrorResponse(error) {
+                this.setTyping(false);
+                
+                let errorMessage = error.message;
+                const errorCode = this.generateErrorCode();
+                
+                // Categorize errors for better UX
+                if (error.message.includes('connect') || error.message.includes('network')) {
+                    errorMessage = 'Unable to connect to the chat service. Please check your internet connection.';
+                    this.updateServiceStatus('offline', 'Connection failed');
+                    this.serviceOnline = false;
+                } else if (error.message.includes('timeout')) {
+                    errorMessage = 'Request timed out. The service may be experiencing high load.';
+                } else if (error.message.includes('Rate limit')) {
+                    errorMessage = 'Too many requests. Please wait a moment before trying again.';
+                } else if (error.message.includes('unavailable')) {
+                    errorMessage = 'The chat service is temporarily unavailable. Please try again in a few moments.';
+                    this.updateServiceStatus('offline', 'Service unavailable');
+                    this.serviceOnline = false;
+                }
+                
+                this.addMessage('bot', errorMessage, true, errorCode);
+                console.error('Chat error:', error);
+            }
+            
+            generateErrorCode() {
+                return 'ERR-' + Date.now().toString(36).slice(-6).toUpperCase();
+            }
+            
+            retryLastMessage() {
+                if (this.lastMessage) {
+                    // Remove retry button
+                    const retryButtons = document.querySelectorAll('.retry-button');
+                    retryButtons.forEach(btn => btn.parentElement.remove());
+                    
+                    this.sendMessage(this.lastMessage);
+                }
+            }
+            
+            setTyping(typing) {
+                this.isTyping = typing;
+                this.elements.typingIndicator.style.display = typing ? 'flex' : 'none';
+                this.elements.sendButton.disabled = typing || !this.serviceOnline;
+                this.elements.messageInput.disabled = typing || !this.serviceOnline;
+                
+                if (typing) {
+                    this.scrollToBottom();
+                }
+            }
+            
+            resetChat() {
+                this.messages = [];
+                this.sessionId = this.generateSessionId();
+                this.lastMessage = null;
+                this.retryCount = 0;
+                this.elements.messagesContainer.innerHTML = '';
+                this.addWelcomeMessage();
+                this.setTyping(false);
+            }
+            
+            scrollToBottom() {
+                setTimeout(() => {
+                    const container = document.getElementById('chatContainer');
+                    container.scrollTop = container.scrollHeight;
+                }, 100);
+            }
+        }
+        
+        // Initialize the enhanced chatbot
+        const chatbot = new EnhancedChatbot();
+        
+        // Make it globally accessible for retry button
+        window.chatbot = chatbot;
+    </script>
+</body>
+</html>

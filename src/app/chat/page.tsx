@@ -36,7 +36,7 @@ export default function ChatPage() {
 
   // Create mutation for sending messages
   const sendMessageMutation = useMutation({
-    mutationFn: async (messageData: { sessionId: string; message: string; metadata?: any }) => {
+    mutationFn: async (messageData: { sessionId: string; message: string; metadata?: Record<string, unknown> }) => {
       // Guard against undefined/empty message data
       if (!messageData) {
         throw new Error('Invalid message data: message data is required');
@@ -272,35 +272,61 @@ export default function ChatPage() {
           setMessages(prev => [...prev, errorMessage]);
         }
       } else {
-        // Handle non-streaming JSON response
+        // Handle non-streaming JSON response with robust extraction
         console.log('[Debug] Received response data:', data);
         
-        // Try multiple possible response field names from n8n webhook
-        let responseText = '';
-        if (data.reply) {
-          responseText = data.reply;
-        } else if (data.response) {
-          responseText = data.response;
-        } else if (data.message) {
-          responseText = data.message;
-        } else if (data.text) {
-          responseText = data.text;
-        } else if (data.content) {
-          responseText = data.content;
-        } else if (data.output) {
-          responseText = data.output;
-        } else if (data.result) {
-          responseText = data.result;
-        } else if (data.answer) {
-          responseText = data.answer;
-        } else if (typeof data === 'string') {
-          responseText = data;
-        } else {
-          // If none of the expected fields exist, try to extract any text content
-          const possibleTextFields = Object.values(data).find(value =>
-            typeof value === 'string' && value.trim().length > 0
-          ) as string | undefined;
-          responseText = possibleTextFields || "I received your message. This is a simulated response.";
+        const extractText = (input: unknown, visited = new Set<object>()): string | null => {
+          const preferred = ['reply', 'response', 'message', 'text', 'content', 'output', 'result', 'answer'];
+          if (input == null) return null;
+          if (typeof input === 'string') {
+            const trimmed = input.trim();
+            return trimmed.length > 0 ? trimmed : null;
+          }
+          if (typeof input === 'number' || typeof input === 'boolean') return String(input);
+          if (Array.isArray(input)) {
+            for (const item of input) {
+              const ex = extractText(item, visited);
+              if (ex) return ex;
+            }
+            return null;
+          }
+          if (typeof input === 'object') {
+            const obj = input as Record<string, unknown>;
+            if (visited.has(obj)) return null;
+            visited.add(obj);
+            for (const key of preferred) {
+              const ex = extractText(obj[key], visited);
+              if (ex) return ex;
+            }
+            const containers = ['data', 'json', 'body', 'payload', 'choices'];
+            for (const key of containers) {
+              if (key in obj) {
+                const ex = extractText(obj[key], visited);
+                if (ex) return ex;
+              }
+            }
+            for (const value of Object.values(obj)) {
+              const ex = extractText(value, visited);
+              if (ex) return ex;
+            }
+            return null;
+          }
+          return null;
+        };
+
+        const tryParseJsonString = (value: string): unknown => {
+          try { return JSON.parse(value); } catch { return null; }
+        };
+
+        let responseText = extractText(data) || '';
+        if (!responseText || (/^\s*\{[\s\S]*\}\s*$/.test(responseText) || /^\s*\[[\s\S]*\]\s*$/.test(responseText))) {
+          const parsed = typeof responseText === 'string' ? tryParseJsonString(responseText) : null;
+          const fromParsed = parsed ? extractText(parsed) : null;
+          if (fromParsed) responseText = fromParsed;
+        }
+
+        if (!responseText || /"output"\s*:\s*null/.test(responseText)) {
+          responseText = 'Sorry, I could not generate a response at the moment. Please try again or rephrase your question.';
         }
         
         const botMessage = {

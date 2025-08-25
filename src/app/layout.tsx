@@ -4,7 +4,7 @@ import "./globals.css";
 import QueryClientProviderWrapper from '@/components/QueryClientProviderWrapper';
 import { ToastProvider } from '@/components/ToastProvider';
 import ConditionalHeader from '@/components/ConditionalHeader';
-import Script from 'next/script';
+// import Script from 'next/script';
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
