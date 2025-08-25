@@ -81,13 +81,17 @@ WORKDIR /app
 
 FROM base AS deps
 COPY package.json package-lock.json* ./
-RUN npm ci --only=production
+RUN npm ci
 
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
+
+FROM base AS prod-deps
+COPY package.json package-lock.json* ./
+RUN npm ci --only=production && npm cache clean --force
 
 FROM base AS runner
 WORKDIR /app
@@ -100,6 +104,7 @@ RUN mkdir .next
 RUN chown nextjs:nodejs .next
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=prod-deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 USER nextjs
 EXPOSE 3000
 ENV PORT 3000
